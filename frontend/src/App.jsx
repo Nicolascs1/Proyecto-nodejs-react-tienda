@@ -8,6 +8,10 @@ import Checkout from "./pages/Checkout";
 import AddProduct from "./pages/AddProduct";
 import NotFound from "./pages/NotFound";
 import Navbar from "./components/Navbar";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import ProtectedRoute from "./components/ProtectedRoute";
 import "./index.css";
 
 function App() {
@@ -20,13 +24,29 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/orders" element={<Orders />} />
+            <Route 
+              path="/cart" 
+              element={
+                <ProtectedRoute>
+                  <Cart />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/orders" 
+              element={
+                <ProtectedRoute>
+                  <Orders />
+                </ProtectedRoute>
+              } 
+            />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/add-product" element={<AddProduct />} />
+            <Route path="/payment/success" element={<PaymentSuccess />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
+        <ToastContainer position="bottom-right" />
       </div>
     </Router>
   );

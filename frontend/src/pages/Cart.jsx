@@ -1,245 +1,186 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
-function Cart() {
-  const [cartItems, setCartItems] = useState([]);
+const Cart = () => {
+  const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [updating, setUpdating] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchCart();
-  }, []);
-
   const fetchCart = async () => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setError("Debes iniciar sesión para ver tu carrito");
-        return;
-      }
-
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/cart`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const token = localStorage.getItem('token');
+      console.log('Obteniendo carrito...');
+      const response = await axios.get('http://localhost:5000/api/cart', {
+        headers: { Authorization: `Bearer ${token}` }
       });
-
-      setCartItems(response.data.products || []);
+      console.log('Respuesta del carrito:', response.data);
+      setCart(response.data.cart || response.data);
     } catch (error) {
-      console.error("Error al obtener el carrito:", error);
-      setError("Error al cargar el carrito");
+      console.error('Error al obtener el carrito:', error);
+      toast.error('Error al cargar el carrito');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchCart();
+  }, []);
+
   const handleQuantityChange = async (productId, newQuantity) => {
+    if (newQuantity < 1) return;
+    setUpdating(true);
     try {
-      setUpdating(true);
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem('token');
+      console.log('Actualizando cantidad:', { productId, newQuantity });
       
-      // Primero eliminar el producto actual
-      await axios.delete(`${import.meta.env.VITE_API_URL}/cart/${productId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      // Luego agregar el producto con la nueva cantidad
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/cart`,
-        { productId, quantity: newQuantity },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      const response = await axios.put(
+        `http://localhost:5000/api/cart/products/${productId}`,
+        { quantity: newQuantity },
+        { headers: { Authorization: `Bearer ${token}` }}
       );
-
-      // Actualizar el estado manteniendo el orden original
-      setCartItems(prevItems => 
-        prevItems.map(item => 
-          item.product._id === productId 
-            ? { ...item, quantity: newQuantity }
-            : item
-        )
-      );
+      
+      console.log('Respuesta de actualización:', response.data);
+      
+      if (response.data.cart) {
+        setCart(response.data.cart);
+        toast.success('Cantidad actualizada');
+      }
     } catch (error) {
-      console.error("Error al actualizar la cantidad:", error);
-      alert(error.response?.data?.message || "Error al actualizar la cantidad");
+      console.error('Error al actualizar cantidad:', error);
+      toast.error(error.response?.data?.message || 'Error al actualizar cantidad');
+      await fetchCart();
     } finally {
       setUpdating(false);
     }
   };
 
-  const handleRemoveFromCart = async (productId) => {
+  const handleRemoveProduct = async (productId) => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${import.meta.env.VITE_API_URL}/cart/${productId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const token = localStorage.getItem('token');
+      await axios.delete(`http://localhost:5000/api/cart/${productId}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      
-      setCartItems(prevItems => prevItems.filter(item => item.product._id !== productId));
+      await fetchCart();
+      toast.success('Producto eliminado del carrito');
     } catch (error) {
-      console.error("Error al eliminar del carrito:", error);
-      alert("Error al eliminar el producto del carrito");
+      console.error('Error al eliminar producto:', error);
+      toast.error('Error al eliminar producto');
     }
   };
 
-  const handleClearCart = async () => {
+  const handleProceedToCheckout = async () => {
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${import.meta.env.VITE_API_URL}/cart`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      
-      setCartItems([]);
+      const token = localStorage.getItem('token');
+      if (!cart || !cart._id) {
+        toast.error('No hay productos en el carrito');
+        return;
+      }
+
+      // Crear la orden
+      await axios.post('http://localhost:5000/api/orders',
+        { cartId: cart._id },
+        { headers: { Authorization: `Bearer ${token}` }}
+      );
+
+      toast.success('Orden creada exitosamente');
+      navigate('/orders');
     } catch (error) {
-      console.error("Error al vaciar el carrito:", error);
-      alert("Error al vaciar el carrito");
+      console.error('Error al crear la orden:', error);
+      toast.error('Error al crear la orden');
     }
   };
 
-  const calculateTotal = () => {
-    return cartItems.reduce((total, item) => {
-      return total + (item.product.price * item.quantity);
-    }, 0);
-  };
+  if (loading) {
+    return <div className="text-center mt-20">Cargando carrito...</div>;
+  }
 
-  if (error) {
+  // Verificar si el carrito está vacío
+  if (!cart || !cart.products || cart.products.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-xl text-red-500">{error}</p>
-        <button
-          onClick={() => navigate("/login")}
-          className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
+      <div className="text-center mt-20">
+        <p className="text-xl mb-4">Tu carrito está vacío</p>
+        <button 
+          onClick={() => navigate('/')}
+          className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
         >
-          Ir a Iniciar Sesión
+          Ver Productos
         </button>
       </div>
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-xl">Cargando carrito...</p>
-      </div>
-    );
-  }
+  const calculateTotal = () => {
+    return cart.products.reduce((total, item) => {
+      return total + (item.product.price * item.quantity);
+    }, 0);
+  };
 
   return (
-    <div className="container mx-auto px-4 py-8 mt-16">
-      <h1 className="text-3xl font-bold mb-6 text-center">🛒 Carrito de Compras</h1>
-
-      {cartItems.length === 0 ? (
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">Tu carrito está vacío</p>
-          <button
-            onClick={() => navigate("/")}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-          >
-            Ir a Productos
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {cartItems.map((item) => (
-              <div key={item.product._id} className="bg-white rounded-lg shadow-md overflow-hidden">
-                {item.product.image && (
-                  <img
-                    src={item.product.image}
-                    alt={item.product.name}
-                    className="w-full h-48 object-cover"
-                  />
-                )}
-                <div className="p-4">
-                  <h2 className="text-xl font-semibold mb-2">{item.product.name}</h2>
-                  <p className="text-gray-600 mb-2">{item.product.description}</p>
-                  <div className="flex justify-between items-center mb-4">
-                    <p className="text-lg font-bold text-blue-600">${item.product.price}</p>
-                    <p className="text-sm text-gray-500">Stock: {item.product.stock}</p>
-                  </div>
-                  <div className="flex items-center space-x-4 mb-4">
-                    <label className="text-sm font-medium text-gray-700">Cantidad:</label>
-                    <div className="flex items-center border rounded">
-                      <button
-                        onClick={() => handleQuantityChange(item.product._id, item.quantity - 1)}
-                        disabled={updating || item.quantity <= 1}
-                        className="px-3 py-1 text-gray-600 hover:text-gray-800 disabled:opacity-50"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min="1"
-                        max={item.product.stock}
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const newValue = parseInt(e.target.value) || 1;
-                          if (newValue >= 1 && newValue <= item.product.stock) {
-                            handleQuantityChange(item.product._id, newValue);
-                          }
-                        }}
-                        disabled={updating}
-                        className="w-16 text-center border-x px-2 py-1"
-                      />
-                      <button
-                        onClick={() => handleQuantityChange(item.product._id, item.quantity + 1)}
-                        disabled={updating || item.quantity >= item.product.stock}
-                        className="px-3 py-1 text-gray-600 hover:text-gray-800 disabled:opacity-50"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveFromCart(item.product._id)}
-                    disabled={updating}
-                    className="w-full py-2 px-4 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
-                  >
-                    Eliminar del Carrito
-                  </button>
-                </div>
+    <div className="container mx-auto px-4 py-8 mt-20">
+      <h2 className="text-2xl font-bold mb-6">Tu Carrito</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {cart.products.map((item) => (
+          <div key={item._id} className="bg-white rounded-lg shadow-md p-6">
+            {item.product.image && (
+              <img 
+                src={item.product.image} 
+                alt={item.product.name}
+                className="w-full h-48 object-cover rounded-md mb-4"
+              />
+            )}
+            <h3 className="text-lg font-semibold mb-2">{item.product.name}</h3>
+            <p className="text-gray-600 mb-2">${item.product.price}</p>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleQuantityChange(item.product._id, item.quantity - 1)}
+                  className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={updating || item.quantity <= 1}
+                >
+                  -
+                </button>
+                <span className="mx-2">{item.quantity}</span>
+                <button
+                  onClick={() => handleQuantityChange(item.product._id, item.quantity + 1)}
+                  className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={updating || item.quantity >= item.product.stock}
+                >
+                  +
+                </button>
               </div>
-            ))}
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-md mt-6">
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-xl font-semibold">Total del Carrito:</span>
-              <span className="text-2xl font-bold text-blue-600">${calculateTotal()}</span>
-            </div>
-            <div className="flex space-x-4">
               <button
-                onClick={handleClearCart}
+                onClick={() => handleRemoveProduct(item.product._id)}
+                className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={updating}
-                className="flex-1 bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 disabled:opacity-50"
               >
-                Vaciar Carrito
-              </button>
-              <button
-                onClick={() => navigate("/checkout")}
-                disabled={updating}
-                className="flex-1 bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 disabled:opacity-50"
-              >
-                Proceder al Pago
+                Eliminar
               </button>
             </div>
+            <p className="text-right font-semibold">
+              Total: ${item.product.price * item.quantity}
+            </p>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+      <div className="mt-8 flex flex-col items-end">
+        <p className="text-xl font-bold mb-4">
+          Total del Carrito: ${calculateTotal()}
+        </p>
+        <button
+          onClick={handleProceedToCheckout}
+          className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={updating}
+        >
+          Generar Orden
+        </button>
+      </div>
     </div>
   );
-}
+};
 
 export default Cart;
   

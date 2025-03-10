@@ -1,78 +1,146 @@
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 
-// Crear un pedido a partir del carrito
-exports.createOrder = async (req, res) => {
+// Crear una nueva orden
+const createOrder = async (req, res) => {
   try {
-    const cart = await Cart.findOne({ user: req.user.id }).populate("products.product");
-    
-    if (!cart || cart.products.length === 0) {
+    const userId = req.user._id;
+    console.log("ID del usuario:", userId);
+
+    // Obtener el carrito del usuario
+    const cart = await Cart.findOne({ user: userId }).populate("products.product");
+    console.log("Carrito encontrado:", cart);
+
+    if (!cart) {
+      console.log("No se encontró el carrito");
       return res.status(400).json({ message: "El carrito está vacío" });
     }
 
-    // Calcular el precio total
-    const totalPrice = cart.products.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+    if (!cart.products || cart.products.length === 0) {
+      console.log("El carrito no tiene productos");
+      return res.status(400).json({ message: "El carrito está vacío" });
+    }
 
-    // Crear el pedido
-    const newOrder = new Order({
-      user: req.user.id,
-      products: cart.products,
-      totalPrice
+    console.log("Productos en el carrito:", cart.products);
+
+    // Crear la orden con los productos del carrito
+    const order = new Order({
+      user: userId,
+      products: cart.products.map(item => ({
+        product: item.product._id,
+        quantity: item.quantity
+      })),
+      totalPrice: cart.products.reduce((total, item) => {
+        return total + (item.product.price * item.quantity);
+      }, 0),
+      status: "Pendiente"
     });
 
-    await newOrder.save();
-    await Cart.findOneAndDelete({ user: req.user.id }); // Vaciar el carrito después del pedido
+    console.log("Orden creada:", order);
 
-    res.status(201).json({ message: "Pedido creado correctamente", order: newOrder });
+    // Guardar la orden
+    const savedOrder = await order.save();
+    console.log("Orden guardada:", savedOrder);
+
+    // Limpiar el carrito después de crear la orden
+    await Cart.findOneAndUpdate(
+      { user: userId },
+      { $set: { products: [] } }
+    );
+
+    // Devolver la orden creada con los productos poblados
+    const populatedOrder = await Order.findById(savedOrder._id)
+      .populate("products.product");
+
+    res.status(201).json(populatedOrder);
   } catch (error) {
-    console.error("Error al crear el pedido:", error);
-    res.status(500).json({ message: "Error al crear el pedido", error });
+    console.error("Error completo al crear la orden:", error);
+    res.status(500).json({ 
+      message: "Error al crear la orden",
+      error: error.message 
+    });
   }
 };
 
-// Obtener los pedidos del usuario
-exports.getUserOrders = async (req, res) => {
+// Obtener órdenes del usuario
+const getUserOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ user: req.user.id }).populate("products.product");
+    const orders = await Order.find({ user: req.user._id })
+      .populate("products.product")
+      .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {
-    res.status(500).json({ message: "Error al obtener los pedidos", error });
+    console.error("Error al obtener las órdenes:", error);
+    res.status(500).json({ message: "Error al obtener las órdenes" });
   }
 };
 
-// Actualizar estado del pedido (solo admin)
-exports.updateOrderStatus = async (req, res) => {
+// Obtener una orden específica
+const getOrderById = async (req, res) => {
   try {
+    const order = await Order.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    }).populate("products.product");
+
+    if (!order) {
+      return res.status(404).json({ message: "Orden no encontrada" });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error("Error al obtener la orden:", error);
+    res.status(500).json({ message: "Error al obtener la orden" });
+  }
+};
+
+// Actualizar estado de la orden
+const updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
     const { status } = req.body;
-    const order = await Order.findById(req.params.id);
+
+    const order = await Order.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    ).populate("products.product");
 
     if (!order) {
-      return res.status(404).json({ message: "Pedido no encontrado" });
+      return res.status(404).json({ message: "Orden no encontrada" });
     }
 
-    order.status = status;
-    await order.save();
-
-    res.json({ message: "Estado del pedido actualizado", order });
+    res.json(order);
   } catch (error) {
-    res.status(500).json({ message: "Error al actualizar el pedido", error });
+    console.error("Error al actualizar el estado de la orden:", error);
+    res.status(500).json({ message: "Error al actualizar el estado de la orden" });
   }
 };
 
-
-// Eliminar un pedido por ID (solo admin)
-exports.deleteOrder = async (req, res) => {
+// Eliminar una orden
+const deleteOrder = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    
+    const { id } = req.params;
+    const order = await Order.findOneAndDelete({
+      _id: id,
+      user: req.user._id
+    });
+
     if (!order) {
-      return res.status(404).json({ message: "Pedido no encontrado" });
+      return res.status(404).json({ message: "Orden no encontrada" });
     }
 
-    await order.deleteOne();
-    res.json({ message: "Pedido eliminado correctamente" });
+    res.json({ message: "Orden eliminada correctamente" });
   } catch (error) {
-    console.error("Error al eliminar el pedido:", error);
-    res.status(500).json({ message: "Error al eliminar el pedido", error });
+    console.error("Error al eliminar la orden:", error);
+    res.status(500).json({ message: "Error al eliminar la orden" });
   }
+};
+
+module.exports = {
+  createOrder,
+  getUserOrders,
+  getOrderById,
+  updateOrderStatus,
+  deleteOrder
 };

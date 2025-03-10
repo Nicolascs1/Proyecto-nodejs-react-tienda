@@ -14,7 +14,7 @@ const OrderSchema = new mongoose.Schema({
     enum: ["Pendiente", "Pagado", "En preparación", "Enviado", "Entregado"], // ✅ Agregamos "Pagado"
     default: "Pendiente" 
   },
-  stripeSessionId: { type: String, required: true }
+  stripeSessionId: { type: String, required: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model("Order", OrderSchema);

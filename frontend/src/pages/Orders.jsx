@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 function Orders() {
   const [orders, setOrders] = useState([]);
@@ -32,6 +33,27 @@ function Orders() {
       setError("Error al cargar los pedidos");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePayment = async (orderId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/payments/create-checkout-session/${orderId}`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // Redirigir a la página de pago de Stripe
+      window.location.href = response.data.url;
+    } catch (error) {
+      console.error("Error al procesar el pago:", error);
+      toast.error("Error al procesar el pago");
     }
   };
 
@@ -123,6 +145,16 @@ function Orders() {
                     <span className="text-lg font-semibold">Total</span>
                     <span className="text-2xl font-bold text-blue-600">${order.totalPrice}</span>
                   </div>
+                  {order.status === "Pendiente" && (
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={() => handlePayment(order._id)}
+                        className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                      >
+                        Pagar con Stripe
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
